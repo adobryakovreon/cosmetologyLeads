@@ -1,0 +1,24 @@
+{
+  "name": "boilerplates",
+  "version": "1.0.1",
+  "description": "code templates for development",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js",
+    "test": "eslint ./"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^0.27.2",
+    "axios-retry": "^3.2.5",
+    "express": "^4.18.1",
+    "log4js": "^6.4.6",
+    "querystring": "^0.2.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.14.0",
+    "nodemon": "^2.0.22"
+  }
+}
