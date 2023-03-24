@@ -153,6 +153,14 @@ function Api() {
 		});
 	});
 
+	this.updateDeal = authChecker((data, id) => {
+		return axios.patch(`${ROOT_PATH}/api/v4/leads/${id}`, data, {
+			headers: {
+				Authorization: `Bearer ${access_token}`,
+			},
+		});
+	});
+
 	// Создать сделки
 	this.createDeals = authChecker((data) => {
 		return axios.post(`${ROOT_PATH}/api/v4/leads`, [].concat(data), {
@@ -211,10 +219,33 @@ function Api() {
 		});
 	});
 
+
+	//Получить задачи, привязанные к сущности id
+	this.getTasks = authChecker((entity_type, entity_id, task_id) => {
+		const queryParams = `?filter[is_completed]=false&filter[entity_type][]=${entity_type}&filter[entity_id][]=${entity_id}&filter[task_type][]=${task_id}`;
+		const url = `${ROOT_PATH}/api/v4/tasks${queryParams}`;	
+		return axios
+			.get(url, {
+				headers: {
+					Authorization: `Bearer ${access_token}`,
+				},
+			})
+			.then(res => res.data);
+	});
+
 	// Создать задачи
 	this.createTasks = authChecker((data) => {
 		const tasksData = [].concat(data);
 		return axios.post(`${ROOT_PATH}/api/v4/tasks`, tasksData, {
+			headers: {
+				Authorization: `Bearer ${access_token}`,
+			},
+		});
+	});
+
+	this.createNodes = authChecker((noteDTO) => {
+		const noteList = [].concat(noteDTO);
+		return axios.post(`${ROOT_PATH}/api/v4/leads/${noteDTO.entity_id}/notes`, noteList, {
 			headers: {
 				Authorization: `Bearer ${access_token}`,
 			},

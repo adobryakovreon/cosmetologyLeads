@@ -6,18 +6,13 @@ const express = require("express");
 const api = require("./api");
 const logger = require("./logger");
 const config = require("./config");
-
+const {CUSTOMER_SERVICES_ID, TASK_ID, DEAL_SERVICE_ID} = require("./constants");
 const app = express();
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // финальный результат летит в параметр price
-// смотрим в результаты getFieldValues(custom_field_values, sevices_id) для сделки и для контакта
-// создаем два идентичных массива для мультимписка сделки и списка услуг контакта по принципу
-// с одной лишь разницей - в массиве контакта у элемента есть поле price - его то мы и суммируем
-// идем по двум массивам по такому принципу - если у элемента массива сделки есть флаг "Выбрано",
-// то к результату прибавляем значение этого же параметра из массива контактов
 // результат сравниваем со значением price, если он отличается, то создаем/изменяем? задачу типа "проверить"
 // делаем хук на проверку закрытия задачи -> создаем примечание к этой задааче "Бюджет проверен, ошибок нет"
 
@@ -26,71 +21,102 @@ const findMainCustomer = async (customers) => {
 	return api.getContact(customerId);
 };
 
-const updatePrice = (customerServices, dealServices, price) => {
+const getNewPrice = (customerServices, dealServices) => {
 	let newPrice = 0;
-	dealServices.forEach(dealService => {
-		newPrice += customerServices.find(customerService => customerService.id === dealService).price;
+	customerServices.forEach(service => {
+		const name = service.field_name;
+		const exist = dealServices.find(service => name === service.value);	
+		if (exist) {
+			newPrice += Number(service.values[0].value);
+		}
 	});
-	return newPrice > price ? newPrice : price; 
-	
+	return newPrice;
 };
 
-/**
- 	standart array to work with:
- 	services: [
-		{
-			service_id:number,
-			service_name:string,
-			//service_price:number,
-			service_is_selected: boolean,
-		}.
-		{
-			...
-		},
-		{
-			...
-		},
-	]
-*/
+const updatePrice = async (newPrice, dealId) => {
+	const priceDTO = {
+		id: dealId,
+		price: newPrice
+	};
+	await api.updateDeal(priceDTO, dealId);
+};
 
-const DEAL_SERVICE_ID = 433147;
+const setTask = async (entity_id, eventName) => {
+	const existedTasks = await api.getTasks("leads", entity_id, TASK_ID);
+	if(typeof existedTasks !== "string") {
+		console.log(`${eventName}Task already exist`);
+		return;
+	} else {
+		const taskDTO = {
+			task_type_id: TASK_ID,
+			text: "Проверить бюджет",
+			complete_till: Math.floor(Date.now()/1000) + 86400,
+			entity_id: entity_id,
+			entity_type: "leads"	
+		};
+		await api.createTasks(taskDTO);
+		console.log(`${eventName}Добавлена задача в сделке ${entity_id}`);
+	}
+};
 
-const main = async (leadDTO) => {
+
+
+const main = async (leadDTO, eventName) => {
 	const {price, id} = leadDTO;
-	// выгрузил сделку и из нее забрал поле "Услуги"
+	// Выгружаем сделку и из нее берем мультисписок "Услуги"
 	const deal = await api.getDeal(id, ["contacts"]);
-	const [dealServices] = deal.custom_fields_values;
-	console.log(dealServices.values);
-	// из сделки выгрузил основной контакт
+	// исправь
+	const dealServices = deal.custom_fields_values
+		? deal.custom_fields_values.find(
+			custom_field => custom_field.field_id === DEAL_SERVICE_ID)
+			.values
+		: [];
+	// Из сделки выгружаем кастомные поля нужных нам услуг основного контакта
 	const {contacts} = deal._embedded;
-	const mainCustomer = await findMainCustomer(contacts);
-	const customerServices = mainCustomer.custom_fields_values;
-	dealServices.values.forEach(service => {
-		const {value} = service;
-		console.log(value);	
-		customerServices.forEach(service => {
-			const {field_name} = service;
-			console.log(service);
-		});
-	});
-	
+	const customerServices = (await findMainCustomer(contacts)).custom_fields_values.filter(
+		service => CUSTOMER_SERVICES_ID.includes(service.field_id)
+	);
+	// Вычисляем newPrice и сравниваем со старой ценой, если отличается, 
+	// то обновляем бюджет и выполняем шаг 2 - создаем задачу "Проверить бюджет"
+	const newPrice = getNewPrice(customerServices,dealServices,price);
+
+	if (newPrice !== Number(price)) {
+		await setTask(Number(id), eventName);
+		await updatePrice(newPrice, id);
+		console.log(`${eventName}Цена в сделке ${id} изменена, новая цена - ${newPrice}`);
+	} else console.log(`${eventName}Цена прежняя, обновления не произошло`);
 };
 
 
-
-app.post("/updateLead", (req, res) => {
-	console.log("/updateLead");
+app.post("/updateLead", async (req, res) => {
+	const eventName = `${new Date(Date.now()).getSeconds()},	update:	`;
 	const [updateEventDTO] =  req.body.leads.update;
-	main(updateEventDTO);
-	res.send("OK");
+	await main(updateEventDTO, eventName);
+	res.send("LEAD UPDATED");
 });
 	
-app.post("/addLead", (req, res) => {
-	console.log("/addLead");
+app.post("/addLead", async (req, res) => {
+	const eventName = `${new Date(Date.now()).getSeconds()},	add:	`;
 	const [addEventDTO] =  req.body.leads.add;
-	main(addEventDTO);
-	res.send("OK");
+	await main(addEventDTO, eventName);
+	res.send("LEAD ADDED");
 });
 
+app.post("/completeTask", async (req, res) => {
+	const [taskEventBody] = req.body.task.update;
+	console.log(taskEventBody);
+	if (taskEventBody.status === "1") {
+		const noteDTO = {
+			entity_type: taskEventBody.element_type,
+			entity_id: taskEventBody.element_id,
+			note_type: "common",
+			params: {
+				"text": "Бюджет проверен, ошибок нет"
+			}
+		};
+		await api.createNodes(noteDTO);
+	}
+	res.send("TASK COMPLETE");
+});
 
 app.listen(config.PORT, () => logger.debug("Server started on ", config.PORT));
