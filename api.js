@@ -243,7 +243,15 @@ function Api() {
 		});
 	});
 
-	this.createNodes = authChecker((noteDTO) => {
+	this.createNodes = authChecker((entity_type, entity_id, note_type, text) => {
+		const noteDTO = {
+			entity_type,
+			entity_id,
+			note_type,
+			params: {
+				text,
+			}
+		};
 		const noteList = [].concat(noteDTO);
 		return axios.post(`${ROOT_PATH}/api/v4/leads/${noteDTO.entity_id}/notes`, noteList, {
 			headers: {

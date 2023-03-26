@@ -6,7 +6,7 @@ const express = require("express");
 const api = require("./api");
 const logger = require("./logger");
 const config = require("./config");
-const {CUSTOMER_SERVICES_ID, TASK_ID, DEAL_SERVICE_ID} = require("./constants");
+const {CUSTOMER_SERVICES_ID, TASK_ID, DEAL_SERVICE_ID, COMPARE} = require("./constants");
 const app = express();
 
 app.use(express.json());
@@ -24,11 +24,11 @@ const findMainCustomer = async (customers) => {
 const getNewPrice = (customerServices, dealServices) => {
 	let newPrice = 0;
 	customerServices.forEach(service => {
-		const name = service.field_name;
-		const exist = dealServices.find(service => name === service.value);	
+		const {field_id, values} = service;
+		const exist = dealServices.find(dealService => field_id === COMPARE[dealService.enum_id]);	
 		if (exist) {
-			newPrice += Number(service.values[0].value);
-		}
+			newPrice += Number(values[0].value);
+		}		
 	});
 	return newPrice;
 };
@@ -65,7 +65,8 @@ const main = async (leadDTO, eventName) => {
 	const {price, id} = leadDTO;
 	// Выгружаем сделку и из нее берем мультисписок "Услуги"
 	const deal = await api.getDeal(id, ["contacts"]);
-	// исправь
+	// Если в сделке есть кастомные поля, то мы находим нужный нам мультисписок
+	// и сохраняем его поля в массив
 	const dealServices = deal.custom_fields_values
 		? deal.custom_fields_values.find(
 			custom_field => custom_field.field_id === DEAL_SERVICE_ID)
@@ -73,13 +74,13 @@ const main = async (leadDTO, eventName) => {
 		: [];
 	// Из сделки выгружаем кастомные поля нужных нам услуг основного контакта
 	const {contacts} = deal._embedded;
+	
 	const customerServices = (await findMainCustomer(contacts)).custom_fields_values.filter(
 		service => CUSTOMER_SERVICES_ID.includes(service.field_id)
 	);
+	const newPrice = getNewPrice(customerServices,dealServices,price);
 	// Вычисляем newPrice и сравниваем со старой ценой, если отличается, 
 	// то обновляем бюджет и выполняем шаг 2 - создаем задачу "Проверить бюджет"
-	const newPrice = getNewPrice(customerServices,dealServices,price);
-
 	if (newPrice !== Number(price)) {
 		await setTask(Number(id), eventName);
 		await updatePrice(newPrice, id);
@@ -94,7 +95,7 @@ app.post("/updateLead", async (req, res) => {
 	await main(updateEventDTO, eventName);
 	res.send("LEAD UPDATED");
 });
-	
+
 app.post("/addLead", async (req, res) => {
 	const eventName = `${new Date(Date.now()).getSeconds()},	add:	`;
 	const [addEventDTO] =  req.body.leads.add;
@@ -103,18 +104,14 @@ app.post("/addLead", async (req, res) => {
 });
 
 app.post("/completeTask", async (req, res) => {
-	const [taskEventBody] = req.body.task.update;
-	console.log(taskEventBody);
-	if (taskEventBody.status === "1") {
-		const noteDTO = {
-			entity_type: taskEventBody.element_type,
-			entity_id: taskEventBody.element_id,
-			note_type: "common",
-			params: {
-				"text": "Бюджет проверен, ошибок нет"
-			}
-		};
-		await api.createNodes(noteDTO);
+	const [{element_type, element_id, status}] = req.body.task.update;
+	if (status === "1") {
+		await api.createNodes(
+			element_type,
+			element_id,
+			"common",
+			"Бюджет проверен, ошибок нет."
+		);
 	}
 	res.send("TASK COMPLETE");
 });
