@@ -2,6 +2,10 @@
 .DS_Store
 Thumbs.db
 
+# eslint config
+.eslintrc.js
+.editorconfig
+
 # Модули проекта
 node_modules/
 
