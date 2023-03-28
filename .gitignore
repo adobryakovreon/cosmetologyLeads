@@ -1,0 +1,21 @@
+# Файлы и папки операционной системы
+.DS_Store
+Thumbs.db
+
+# eslint config
+.eslintrc.js
+.editorconfig
+
+# Модули проекта
+node_modules/
+
+# Папка для логирования
+logs/
+
+# Файлы авторизации
+authclients/ 
+amo_token.json
+
+# Любые другие файлы проекта
+*.zip
+*.svg
