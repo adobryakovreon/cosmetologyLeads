@@ -145,8 +145,8 @@ function Api() {
 	});
 	
 	//Получить задачи, привязанные к сущности id
-	this.getTasks = authChecker((entity_type, entity_id, task_id, is_completed) => {
-		const queryParams = `?filter[is_completed]=${is_completed}&filter[entity_type][]=${entity_type}&filter[entity_id][]=${entity_id}&filter[task_type][]=${task_id}`;
+	this.getTasks = authChecker((params) => {
+		const queryParams = `?filter[is_completed]=${params.is_completed}&filter[entity_type][]=${params.entity_type}&filter[entity_id][]=${params.entity_id}&filter[task_type][]=${params.task_type_id}`;
 		const url = `${ROOT_PATH}/api/v4/tasks${queryParams}`;	
 		return axios
 			.get(url, {
@@ -154,25 +154,12 @@ function Api() {
 					Authorization: `Bearer ${access_token}`,
 				},
 			})
-			.then(res => res.data);
+			.then(res => res.data ? res.data._embedded.tasks : []);
 	});
 
 	// Создать задачи
-	this.createTask = authChecker((
-		entity_type,
-		entity_id,
-		task_type_id,
-		complete_till,
-		text
-	) => {
-		const taskDTO = [].concat({
-			entity_type,	
-			entity_id,
-			task_type_id,
-			complete_till,
-			text,
-		});
-		return axios.post(`${ROOT_PATH}/api/v4/tasks`, taskDTO, {
+	this.createTask = authChecker((taskDTO) => {
+		return axios.post(`${ROOT_PATH}/api/v4/tasks`, [].concat(taskDTO), {
 			headers: {
 				Authorization: `Bearer ${access_token}`,
 			},
@@ -180,16 +167,8 @@ function Api() {
 	});
 
 	// Создать примечание
-	this.createNote = authChecker((entity_type, entity_id, note_type, text) => {
-		const noteDTO = [].concat({
-			entity_type,
-			entity_id,
-			note_type,
-			params: {
-				text,
-			}
-		});
-		return axios.post(`${ROOT_PATH}/api/v4/leads/${noteDTO.entity_id}/notes`, noteDTO, {
+	this.createNote = authChecker((noteDTO) => {
+		return axios.post(`${ROOT_PATH}/api/v4/leads/${noteDTO.element_id}/notes`, [].concat(noteDTO), {
 			headers: {
 				Authorization: `Bearer ${access_token}`,
 			},
